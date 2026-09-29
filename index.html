@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CRISPR Guide Design</title>
+<style>
+body{font-family:system-ui,sans-serif;max-width:960px;margin:2rem auto;padding:0 1rem;color:#222}
+textarea{width:100%;height:9rem;font-family:monospace}
+button{padding:.5rem 1.2rem;margin:.5rem 0;cursor:pointer}
+table{border-collapse:collapse;width:100%;font-size:.9rem}
+th,td{border-bottom:1px solid #ddd;padding:.35rem .5rem;text-align:left}
+th{cursor:pointer;background:#f3f5f9}
+.low{color:#137333}.medium{color:#b06000}.high{color:#c5221f}
+#err{color:#c5221f}
+</style></head><body>
+<h1>CRISPR Guide Design</h1>
+<p>Paste a DNA sequence (max {{ max_len }} bp, A/C/G/T, FASTA header optional). Finds SpCas9 (NGG) guides on both strands, checks GC content and flags, and counts off-target near-matches (up to 3 mismatches).</p>
+<textarea id="seq" placeholder="ATGC..."></textarea><br>
+<button id="run">Analyze</button> <span id="err"></span>
+<p id="summary"></p>
+<table id="tbl"><thead><tr>
+<th data-k="start">Start</th><th data-k="strand">Strand</th><th data-k="guide">Guide</th><th data-k="pam">PAM</th>
+<th data-k="gc">GC</th><th data-k="offtargets">Off-targets</th><th data-k="risk">Risk</th><th>Flags</th>
+</tr></thead><tbody></tbody></table>
+<h3>Recent runs</h3><ul id="hist"></ul>
+<script>
+let rows=[],asc=true;
+const $=id=>document.getElementById(id);
+function render(){
+  $("tbl").tBodies[0].innerHTML=rows.map(g=>`<tr><td>${g.start}</td><td>${g.strand}</td><td><code>${g.guide}</code></td>
+  <td>${g.pam}</td><td>${g.gc}</td><td>${g.offtargets}</td><td class="${g.risk}">${g.risk}</td><td>${g.flags.join(", ")}</td></tr>`).join("");
+}
+async function history(){
+  const r=await (await fetch("/api/history")).json();
+  $("hist").innerHTML=r.map(h=>`<li>${h.created}: ${h.seq_len} bp, ${h.n_guides} guides (${h.n_low_risk} low risk), ${h.seconds}s</li>`).join("");
+}
+$("run").onclick=async()=>{
+  $("err").textContent="";
+  const res=await fetch("/api/analyze",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sequence:$("seq").value})});
+  const d=await res.json();
+  if(!res.ok){$("err").textContent=d.error;return;}
+  rows=d.guides;render();
+  $("summary").textContent=`${d.n_guides} guides found in ${d.seq_len} bp; ${d.n_low_risk} low risk (${d.seconds}s).`;
+  history();
+};
+document.querySelectorAll("th[data-k]").forEach(th=>th.onclick=()=>{
+  const k=th.dataset.k;asc=!asc;
+  rows.sort((a,b)=>(a[k]>b[k]?1:-1)*(asc?1:-1));render();
+});
+history();
+</script></body></html>
